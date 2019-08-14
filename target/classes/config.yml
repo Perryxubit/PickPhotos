@@ -1,0 +1,9 @@
+#configuration file of the tool
+
+# runtime mode: gui or cmd
+runtime_mode: gui
+#language: eng or chn
+language: eng
+
+# work space directory (logs)
+workspace: /Users/perry/Documents/
