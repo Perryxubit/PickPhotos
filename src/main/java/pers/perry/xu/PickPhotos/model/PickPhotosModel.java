@@ -1,313 +1,303 @@
-package pers.perry.xu.PickPhotos.model;
+package pers.perry.xu.pickphotos.model;
 
-import java.awt.Image;
-import java.awt.image.BufferedImage;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 
-import javax.imageio.ImageIO;
-import javax.swing.ImageIcon;
 import javax.swing.JOptionPane;
-import javax.swing.filechooser.FileSystemView;
 
-import pers.perry.xu.PickPhotos.utils.Utils;
+import org.apache.commons.io.FilenameUtils;
+import org.apache.log4j.Logger;
+
+import pers.perry.xu.pickphotos.exception.InvalidFilePathException;
+import pers.perry.xu.pickphotos.utils.ToolConfiguration;
+import pers.perry.xu.pickphotos.utils.Utils;
+import pers.perryxu.pickphotos.persistence.dto.Photo;
+import pers.perryxu.pickphotos.persistence.fileio.FileReadHandler;
+import pers.perryxu.pickphotos.persistence.fileio.FileWriteHandler;
 
 public class PickPhotosModel {
 
-	private File[] photoList;
+	final Logger logger = Logger.getLogger(PickPhotosModel.class);
 
 	// the current photo index
 	private int currentPhotoIndex = 0;
 
-	// log files
-	private Path indexFile;
-	private Path logFile;
-	private Path pathFile;
-	private Path workspacePath;
+	// the file list of loaded directory
+	private List<Path> photoList;
 
-	
+	// the map keeping all paths
+	// source/target/work/workindex/worklog/workpath
+	private HashMap<String, Path> pathsHashMap = null;
 
-	private HashMap<String, Boolean> copymap;
+	// checked map
+	private HashMap<String, Boolean> fileChecked;
 
 	public PickPhotosModel() {
-		this.copymap = new HashMap<String, Boolean>();
+		logger.setLevel(ToolConfiguration.logLevel);
 
 		try {
-			// # load work space Path
+			fileChecked = new HashMap<String, Boolean>();
+
+			// # load work space Paths into the pathsHashMap
 			loadWorkSpace();
-
-
+			
 		} catch (IOException e) {
 			Utils.processException(e);
 		}
 	}
 
 	private void loadWorkSpace() throws IOException {
-		String workspace = (String) Utils.getProperties().get("workspace");
-		if (workspace != null) {
-			this.workspacePath = Paths.get(workspace + File.separator + "PickPhotosRuntime");
+		String configWorkspace = (String) Utils.getProperties().get("workspace");
+		Path workspace = null;
+		if (configWorkspace != null) {
+			workspace = Paths.get(configWorkspace + File.separator + "PickPhotosRuntime");
 		} else {
-			this.workspacePath = Paths.get(System.getProperty("java.io.tmpdir") + File.separator + "PickPhotosRuntime");
+			workspace = Paths.get(System.getProperty("java.io.tmpdir") + File.separator + "PickPhotosRuntime");
 		}
 
 		// mkdirs() if not existing
-		if (!Files.exists(this.workspacePath)) {
-			Files.createDirectories(this.workspacePath);
+		if (!Files.exists(workspace)) {
+			Files.createDirectories(workspace);
 		}
 
 		// initialize files
 		// log.txt file stores the index of most recently checked photo
-		this.indexFile = Paths.get(this.workspacePath + File.separator + "index.txt");
-		if (!Files.exists(indexFile)) {
-			Files.createFile(indexFile);
-		}
+		Path indexFile = Paths.get(workspace + File.separator + "index.txt");
+		Path logFile = Paths.get(workspace + File.separator + "log.txt");
+		Path pathFile = Paths.get(workspace + File.separator + "path.txt");
 
-		this.logFile = Paths.get(this.workspacePath + File.separator + "log.txt");
-		if (!Files.exists(logFile)) {
-			Files.createFile(logFile);
-		}
+		pathsHashMap = new HashMap<String, Path>();
+		// saved into the path map
+		pathsHashMap.put("work", workspace);
+		pathsHashMap.put("workindex", indexFile);
+		pathsHashMap.put("worklog", logFile);
+		pathsHashMap.put("workpath", pathFile);
+		pathsHashMap.put("source", workspace); // default work space
+		pathsHashMap.put("target", workspace); // default work space
+	}
 
-		this.pathFile = Paths.get(this.workspacePath + File.separator + "path.txt");
-		if (!Files.exists(pathFile)) {
-			Files.createFile(pathFile);
+	private void initialzeLogFiles(Path indexFile, Path logFile, Path pathFile) throws IOException {
+		if (Files.exists(logFile)) // delete the existing log file
+			Files.delete(logFile);
+		if (Files.exists(pathFile)) // delete the existing path file
+
+		// (re)create log and index files
+		Files.createFile(indexFile);
+		Files.createFile(logFile);
+		Files.createFile(pathFile);
+	}
+
+	private boolean isValidPhoto(Path photoPath) {
+		// # Judge the photo ext
+		String extension = FilenameUtils.getExtension(photoPath.getFileName().toString()).toUpperCase();
+
+		// Only identify: BMP JPG JPEG PNG GIF
+		if (extension.equals("BMP") || extension.equals("JPG") || extension.equals("JPEG") || extension.equals("PNG")
+				|| extension.equals("GIF")) {
+			return true;
+		} else {
+			return false;
 		}
 	}
 
-	public Path getDefaultSourcePath() {
-		FileSystemView fsv = javax.swing.filechooser.FileSystemView.getFileSystemView();
-		String rootPath = fsv.getDefaultDirectory().getPath() + File.separator + "PickYourPhotos";
-		return Paths.get(rootPath);
-	}
-
-	public void startShowPhotos(Path sourcePath, Path targetPath) {
+	public Photo getPhotoWhenStart(Path sourcePath, Path targetPath) throws IOException {
 		if (!Files.exists(sourcePath)) {
-			Utils.showErrorWindow("照片源文件夹路径不存在!");
-			return;
+			Utils.showErrorWindow(new InvalidFilePathException("照片源文件夹路径不存在!"));
+			return null;
+		} else if (!Files.exists(targetPath)) {
+			Utils.showErrorWindow(new InvalidFilePathException("保存照片的目标文件夹路径不存在!"));
+			return null;
 		}
-
-		if (!Files.exists(targetPath)) {
-			Utils.showErrorWindow("保存照片的目标文件夹路径不存在!");
-			return;
+		
+		if (photoList == null) {
+			photoList = new ArrayList<Path>();
+		} else {
+			photoList.clear();
 		}
-
-		try {
-			photoList = new File(sourcePhotoPath).listFiles();
-			System.out.println("amount of files: " + photoList.length);
-			if (!indexFile.exists()) { // no index file exists, create new one and initialize it (index.txt file stores
-										// the already copied file)
-				if (logFile.exists())
-					logFile.delete();
-				indexFile.createNewFile();
-				logFile.createNewFile();
-				System.out.println("index.txt file does not exist, created index.txt and reset log.txt");
-				if (photoList.length >= 1) { // put index in log.txt
-					BufferedWriter bw = new BufferedWriter(new FileWriter(logFile));
-					SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-					int firstp = 0;
-					while (judgePhoto(photoList[firstp]) == false && firstp + 1 < photoList.length)
-						firstp++;
-					String write = df.format(new Date()) + "__Read photolist__#" + firstp + "#"; // display the first
-																									// photo by default
-					bw.write(write);
-					bw.newLine();
-					bw.close();
+		
+		try (DirectoryStream<Path> stream = Files.newDirectoryStream(sourcePath)) {
+			for (Path file: stream) {
+				if(isValidPhoto(file)) { // only add the valid photo files
+					this.photoList.add(file);
 				}
-			} else { // load index.txt into hashmap copymap
-				BufferedReader br = new BufferedReader(new FileReader(indexFile));
-				String str = br.readLine();
-				while (str != null) {
-					copymap.put(str, true);
-					str = br.readLine();
-				}
-				br.close();
-				System.out.println("load file index.txt successfully.");
 			}
-		} catch (IOException e1) {
-			e1.printStackTrace();
-			JOptionPane.showMessageDialog(null, e1.getMessage(), "注意!", 1);
+		}
+		logger.info("Totally found " + photoList.size() + " photos in sourcePath");
+
+		Path indexFile = pathsHashMap.get("workindex");
+		Path logFile = pathsHashMap.get("worklog");
+		Path workPathFile = pathsHashMap.get("workpath");
+		if (!Files.exists(indexFile)) {
+			// No index file exists, then initialize all log files
+			// (index.txt file stores the already copied file)
+			initialzeLogFiles(indexFile, logFile, workPathFile);
+			logger.info("Notice: index.txt file does not exist, created new index.txt and reset log.txt.");
+
+			if (photoList.size() >= 1) { // put index in log.txt
+				int firstIndex = 0;
+				FileWriteHandler fileWriteHandler = new FileWriteHandler(logFile);
+				fileWriteHandler.appendFileWithTimeStamp("Read photoList #" + firstIndex);
+				fileWriteHandler.endWriting();
+			}
+		} else { // load index.txt into hashmap copymap
+			FileReadHandler fileReadHandler = new FileReadHandler(indexFile);
+			String str = fileReadHandler.readLine();
+			while (str != null) {
+				// initialize the fileChecked hashmap with records in index.txt
+				fileChecked.put(str, true);
+				str = fileReadHandler.readLine();
+			}
+			fileReadHandler.endReading();
+			logger.info("Loaded existing index.txt successfully.");
 		}
 
 		// update 2 path in path.txt file when clicking the "start" button
-		try {
-			if (pathFile.exists())
-				pathFile.delete();
-			pathFile.createNewFile();
-			BufferedWriter bwp = new BufferedWriter(new FileWriter(pathFile));
-			bwp.write("#R#" + readfile_input.getText());
-			bwp.newLine();
-			bwp.write("#S#" + savefile_input.getText());
-			bwp.newLine();
-			bwp.close();
-			System.out.println("update file path.txt successfully.");
-		} catch (IOException e2) {
-			e2.printStackTrace();
-			JOptionPane.showMessageDialog(null, e2.getMessage(), "注意!", 1);
-		}
+		// non-append, override old files
+		FileWriteHandler pathWriteHandler = new FileWriteHandler(workPathFile);
+		pathWriteHandler.appendFile("#READFROM#" + sourcePath);
+		pathWriteHandler.appendFile("#SAVETO#" + targetPath);
+		pathWriteHandler.endWriting();
+		logger.info("Updated workpath file path.txt successfully.");
 
-		// display the current photo in Jlabel
-		if (photoList.length >= 1) {
-			// first, find the latest photo in log.txt
-			try {
-				currentPhoto = getIndexOfCurrentPhoto(logFile); // get current photo index with log.txt file
-				System.out.println("Current photo index: " + currentPhoto);
-				String photoPath = photoList[currentPhoto].getPath();
-				System.out.println("display the current photo: " + photoPath);
-				// get wid/hei from the orginal photo
-				BufferedImage bufferedImage = ImageIO.read(new File(photoPath));
-				int pho_wid = bufferedImage.getWidth();
-				int pho_hei = bufferedImage.getHeight();
-				photo_width = (int) (size_x);
-				photo_height = (int) (pho_hei / (pho_wid / (double) size_y)); // resize photo to suit the window size
-
-				// ### set photo in Jlabel ###
-				ImageIcon image = new ImageIcon(photoPath);
-				image.setImage(image.getImage().getScaledInstance(photo_width, photo_height, Image.SCALE_DEFAULT));
-				photo.setIcon(image);
-
-				// update the text information area
-				if (copymap.get(photoList[currentPhoto].getName()) != null) { // saved before
-					notice_label.setText("该照片已经保存过了!!!!!");
-					deleteButton.show();
-				} else {
-					notice_label.setText("未保存"); // not saved yet
-					deleteButton.hide();
+		// return the current photo in Jlabel
+		Photo photo = null;
+		if (photoList.size() >= 1) {
+			// first, find the latest photo from log.txt
+			FileReadHandler fileReadHandler = new FileReadHandler(logFile);
+			int max = 0;
+			String str = fileReadHandler.readLine();
+			while (str != null) {
+				// e.g. Read photolist: #125
+				String num = str.substring(str.indexOf("#") + 1);
+				int No = Integer.parseInt(num);
+				// get the biggest number, and return it as current photo index
+				if (No > max) {
+					max = No;
 				}
-				String details = " 当前照片: " + (currentPhoto + 1) + "/" + photoList.length + "  照片名: "
-						+ photoList[currentPhoto].getName() + "  大小: " + photoList[currentPhoto].length() / 1024 + "KB";
-				photoInfo_label.setText(details);
-			} catch (IOException e1) {
-				e1.printStackTrace();
-				JOptionPane.showMessageDialog(null, e1.getMessage(), "注意!", 1);
+				str = fileReadHandler.readLine();
 			}
+			fileReadHandler.endReading();
+
+			currentPhotoIndex = max;
+			Path photoPath = photoList.get(currentPhotoIndex);
+			logger.info("Current photo index: " + currentPhotoIndex + " [" + photoPath + "]");
+
+			photo = new Photo(photoPath);
+
+			// update the text information area
+			if (fileChecked.get(photoPath.getFileName().toString()) != null) { // the photo was saved before
+				photo.setSaved(true);
+			} else {
+				photo.setSaved(false); // not saved yet
+			}
+			String details = " 当前照片: " + (currentPhotoIndex + 1) + "/" + photoList.size() + "  照片名: "
+					+ photoList.get(currentPhotoIndex).getFileName() + "  大小: "
+					+ Files.size(photoList.get(currentPhotoIndex)) / 1024 + "KB";
+			photo.setPhotoDescription(details);
+		}
+
+		return photo;
+	}
+
+	public HashMap<String, Path> getFilePaths() throws InvalidFilePathException {
+		if (!isPathsValidated(pathsHashMap)) {
+			throw new InvalidFilePathException("路径错误.");
+		}
+		return pathsHashMap;
+	}
+
+	private boolean isPathsValidated(HashMap<String, Path> pathsHashMap) {
+		if (pathsHashMap == null) {
+			return false;
+		}
+
+		return true;
+	}
+
+	public Photo getPhotoWhenPrevious() throws IOException {
+		// show previous photo
+		int photoBeforePrevious = currentPhotoIndex;
+		currentPhotoIndex--;
+
+		if (currentPhotoIndex >= 0) {
+			// display prevous photo
+			Path previousPhoto = photoList.get(currentPhotoIndex);
+			logger.info("Previous photo: " + previousPhoto + ", index=" + currentPhotoIndex);
+
+			Photo photo = new Photo(previousPhoto);
+
+			// update log.txt
+			Path logFile = pathsHashMap.get("worklog");
+			FileWriteHandler fileWriteHandler = new FileWriteHandler(logFile, true);
+			fileWriteHandler.appendFileWithTimeStamp("Read photoList #" + currentPhotoIndex);
+			fileWriteHandler.endWriting();
+
+			if (fileChecked.get(photoList.get(currentPhotoIndex).getFileName().toString()) != null) { // the photo was
+																										// saved before
+				photo.setSaved(true);
+			} else {
+				photo.setSaved(false);
+			}
+
+			String details = " 当前照片: " + (currentPhotoIndex + 1) + "/" + photoList.size() + "  照片名: "
+					+ photoList.get(currentPhotoIndex).getFileName() + "  大小: "
+					+ Files.size(photoList.get(currentPhotoIndex)) / 1024 + "KB";
+			photo.setPhotoDescription(details);
+
+			return photo;
+		} else {
+			JOptionPane.showMessageDialog(null, "这是第一张!", "注意!", 1);
+			currentPhotoIndex = photoBeforePrevious;
+			return null;
 		}
 	}
 
-	public void showPreviousPhoto() {
-//		// previous photo
-//		int photobefore = currentPhotoIndex;
-//		currentPhotoIndex--;
-//		while (currentPhotoIndex >= 0 && judgePhoto(photoList[currentPhoto]) == false)
-//			currentPhotoIndex--;
-//		if (currentPhotoIndex >= 0) {
-//			// display prevous photo
-//			String nextPhoto = photoList[currentPhotoIndex].getPath();
-//			System.out.println("index: " + currentPhotoIndex + ",display the current photo: " + nextPhoto);
-//			// get wid/hei from the photo
-//			try {
-//				BufferedImage bufferedImage = ImageIO.read(new File(nextPhoto));
-//				int pho_wid = bufferedImage.getWidth();
-//				int pho_hei = bufferedImage.getHeight();
-//				photo_width = (int) (size_x);
-//				photo_height = (int) (pho_hei / (pho_wid / (double) size_y)); // scale
-//			} catch (IOException e1) {
-//				e1.printStackTrace();
-//				JOptionPane.showMessageDialog(null, e1.getMessage(), "注意!", 1);
-//			}
-//
-//			// display photo
-//			if (judgePhoto(photoList[currentPhoto]) == true) { // is photo
-//				ImageIcon image = new ImageIcon(nextPhoto);
-//				image.setImage(image.getImage().getScaledInstance(photo_width, photo_height, Image.SCALE_DEFAULT));
-//				photo.setIcon(image);
-//			} else
-//				photo.setText("当前文件不是照片文件。");
-//
-//			// no need to update log.txt
-//			// update the information text area
-//			if (copymap.get(photoList[currentPhotoIndex].getName()) != null) { // saved before
-//				notice_label.setText("     该照片已经保存过了!!!    ");
-//				deleteButton.show();
-//			} else {
-//				notice_label.setText(" 未保存 ");
-//				deleteButton.hide();
-//			}
-//			String details = " 当前照片: " + (currentPhotoIndex + 1) + "/" + photoList.length + "  照片名: "
-//					+ photoList[currentPhotoIndex].getName() + "  大小: " + photoList[currentPhoto].length() / 1024
-//					+ "KB";
-//			;
-//			photoInfo_label.setText(details);
-//		} else {
-//			JOptionPane.showMessageDialog(null, "这是第一张!", "注意!", 1);
-//			currentPhotoIndex = photobefore;
-//		}
+	public Photo getPhotoWhenNext() throws IOException {
+		// show next photo
+		int photoBeforeNext = currentPhotoIndex;
+		currentPhotoIndex++;
+
+		if (currentPhotoIndex >= 0 && currentPhotoIndex < photoList.size()) {
+			// display next photo
+			Path nextPhoto = photoList.get(currentPhotoIndex);
+			logger.info("Next photo: " + nextPhoto + ", index=" + currentPhotoIndex);
+
+			Photo photo = new Photo(nextPhoto);
+
+			// update log.txt
+			Path logFile = pathsHashMap.get("worklog");
+			FileWriteHandler fileWriteHandler = new FileWriteHandler(logFile, true);
+			fileWriteHandler.appendFileWithTimeStamp("Read photoList #" + currentPhotoIndex);
+			fileWriteHandler.endWriting();
+
+			if (fileChecked.get(photoList.get(currentPhotoIndex).getFileName().toString()) != null) { // the photo was
+																										// saved before
+				photo.setSaved(true);
+			} else {
+				photo.setSaved(false);
+			}
+
+			String details = " 当前照片: " + (currentPhotoIndex + 1) + "/" + photoList.size() + "  照片名: "
+					+ photoList.get(currentPhotoIndex).getFileName() + "  大小: "
+					+ Files.size(photoList.get(currentPhotoIndex)) / 1024 + "KB";
+			photo.setPhotoDescription(details);
+
+			return photo;
+		} else {
+			JOptionPane.showMessageDialog(null, "这是最后一张!", "注意!", 1);
+			currentPhotoIndex = photoBeforeNext;
+			return null;
+		}
 	}
 
-	public void showNextPhoto() {
-//		File logFile = new File(this.workspacePath + "\\" + "log.txt");
-//		// next photo
-//		int photobefore = currentPhotoIndex;
-//		currentPhotoIndex++;
-//		while (currentPhotoIndex < photoList.length && judgePhoto(photoList[currentPhotoIndex]) == false)
-//			currentPhoto++;
-//		if (currentPhotoIndex >= 0 && currentPhotoIndex < photoList.length) {
-//			// display next photo
-//			String nextPhoto = photoList[currentPhotoIndex].getPath();
-//			System.out.println("index: " + currentPhotoIndex + ",display the current photo: " + nextPhoto);
-//			// get wid/hei from the photo
-//			try {
-//				BufferedImage bufferedImage = ImageIO.read(new File(nextPhoto));
-//				int pho_wid = bufferedImage.getWidth();
-//				int pho_hei = bufferedImage.getHeight();
-//				photo_width = (int) (size_x);
-//				photo_height = (int) (pho_hei / (pho_wid / (double) size_y)); // scale
-//			} catch (IOException e1) {
-//				e1.printStackTrace();
-//				JOptionPane.showMessageDialog(null, e1.getMessage(), "注意!", 1);
-//			}
-//
-//			// display photo
-//			if (judgePhoto(photoList[currentPhotoIndex]) == true) { // is photo
-//				ImageIcon image = new ImageIcon(nextPhoto);
-//				image.setImage(image.getImage().getScaledInstance(photo_width, photo_height, Image.SCALE_DEFAULT));
-//				photo.setIcon(image);
-//			} else
-//				photo.setText("当前文件不是照片文件。");
-//
-//			// update log.txt
-//			try {
-//				BufferedWriter bw = new BufferedWriter(new FileWriter(logFile, true));
-//				SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-//				String write = df.format(new Date()) + "__Read photolist__#" + currentPhotoIndex + "#";
-//				bw.write(write);
-//				bw.newLine();
-//				bw.close();
-//			} catch (Exception e2) {
-//				e2.printStackTrace();
-//				JOptionPane.showMessageDialog(null, e2.getMessage(), "注意!", 1);
-//			}
-//
-//			// update the text information area
-//			if (copymap.get(photoList[currentPhotoIndex].getName()) != null) { // saved before
-//				notice_label.setText("     该照片已经保存过了!!!    ");
-//				deleteButton.show();
-//			} else {
-//				notice_label.setText(" 未保存 "); // not saved yet
-//				deleteButton.hide();
-//			}
-//			String details = " 当前照片: " + (currentPhotoIndex + 1) + "/" + photoList.length + "  照片名: "
-//					+ photoList[currentPhotoIndex].getName() + "  大小: " + photoList[currentPhoto].length() / 1024
-//					+ "KB";
-//			;
-//			photoInfo_label.setText(details);
-//		} else {
-//			JOptionPane.showMessageDialog(null, "这是最后一张!", "注意!", 1);
-//			currentPhotoIndex = photobefore;
-//		}
-	}
-
-	public void deleteSavePhotoPhoto() {
+	public void deleteSavedPhoto() {
 //		try {
 //			// 1. delete from hashmap
 //			String deleteName = photoList[currentPhoto].getName();
@@ -354,54 +344,46 @@ public class PickPhotosModel {
 //		}
 	}
 
-	private boolean judgePhoto(File photo) {
-		// Judge the photo suffix
-		String extension = photo.getName().substring(photo.getName().indexOf(".") + 1).toUpperCase();
-		// Only identify: BMP JPG JPEG PNG GIF
-		if (extension.equals("BMP") || extension.equals("JPG") || extension.equals("JPEG") || extension.equals("PNG")
-				|| extension.equals("GIF"))
-			return true;
-		return false;
-	}
+
 
 	public int clearAllConfigFile() {
-		File[] configF = new File[3];
-		configF[0] = new File(this.workspacePath + "\\" + "index.txt");
-		configF[1] = new File(this.workspacePath + "\\" + "log.txt");
-		configF[2] = new File(this.workspacePath + "\\" + "path.txt");
-		File backup = new File(this.workspacePath + "\\" + "Recycle");
-
-		// clear old recycle folder
-		new File(this.workspacePath + "\\Recycle\\index.txt").delete();
-		new File(this.workspacePath + "\\Recycle\\log.txt").delete();
-		new File(this.workspacePath + "\\Recycle\\path.txt").delete();
-		if (backup.isDirectory())
-			backup.delete();
-		backup.mkdirs();
-
-		try {
-			// copy three files
-			for (int i = 0; i < 3; i++) {
-				FileInputStream input = new FileInputStream(configF[i]);
-				String oldFileName = configF[i].getName().substring(configF[i].getName().lastIndexOf("\\") + 1) + "";
-				FileOutputStream output = new FileOutputStream(new File(backup.getPath() + "\\" + oldFileName));
-				byte[] b = new byte[1024 * 5];
-				int len;
-				while ((len = input.read(b)) != -1) {
-					output.write(b, 0, len);
-				}
-				output.flush();
-				output.close();
-				input.close();
-			}
-			// delete all file:
-			for (int i = 0; i < 3; i++)
-				configF[i].delete();
-
-		} catch (Exception e) {
-			e.printStackTrace();
-			return 1; // failed
-		}
+//		File[] configF = new File[3];
+//		configF[0] = new File(this.workspacePath + "\\" + "index.txt");
+//		configF[1] = new File(this.workspacePath + "\\" + "log.txt");
+//		configF[2] = new File(this.workspacePath + "\\" + "path.txt");
+//		File backup = new File(this.workspacePath + "\\" + "Recycle");
+//
+//		// clear old recycle folder
+//		new File(this.workspacePath + "\\Recycle\\index.txt").delete();
+//		new File(this.workspacePath + "\\Recycle\\log.txt").delete();
+//		new File(this.workspacePath + "\\Recycle\\path.txt").delete();
+//		if (backup.isDirectory())
+//			backup.delete();
+//		backup.mkdirs();
+//
+//		try {
+//			// copy three files
+//			for (int i = 0; i < 3; i++) {
+//				FileInputStream input = new FileInputStream(configF[i]);
+//				String oldFileName = configF[i].getName().substring(configF[i].getName().lastIndexOf("\\") + 1) + "";
+//				FileOutputStream output = new FileOutputStream(new File(backup.getPath() + "\\" + oldFileName));
+//				byte[] b = new byte[1024 * 5];
+//				int len;
+//				while ((len = input.read(b)) != -1) {
+//					output.write(b, 0, len);
+//				}
+//				output.flush();
+//				output.close();
+//				input.close();
+//			}
+//			// delete all file:
+//			for (int i = 0; i < 3; i++)
+//				configF[i].delete();
+//
+//		} catch (Exception e) {
+//			e.printStackTrace();
+//			return 1; // failed
+//		}
 
 		// initialize successfully
 		return 0;
@@ -449,24 +431,6 @@ public class PickPhotosModel {
 //				}
 //			}
 //		}
-	}
-
-	private int getIndexOfCurrentPhoto(File logfile) throws IOException {
-		int max = 0;
-		BufferedReader br = new BufferedReader(new FileReader(logfile));
-		String str = br.readLine();
-		while (str != null) {
-			// e.g. Read photolist: #125#
-			String num = str.substring(str.indexOf("#") + 1, str.lastIndexOf("#"));
-			int No = Integer.parseInt(num);
-			// get the biggest number, and return it as current photo index
-			if (No > max) {
-				max = No;
-			}
-			str = br.readLine();
-		}
-		br.close();
-		return max;
 	}
 
 

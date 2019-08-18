@@ -3,7 +3,8 @@
 # runtime mode: gui or cmd
 runtime_mode: gui
 #language: eng or chn
-language: eng
+language: chn
 
 # work space directory (logs)
 workspace: /Users/perry/Documents/
+

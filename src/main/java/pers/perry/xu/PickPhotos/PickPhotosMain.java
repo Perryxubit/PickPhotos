@@ -1,25 +1,34 @@
-package pers.perry.xu.PickPhotos;
+package pers.perry.xu.pickphotos;
 
 import java.io.IOException;
 
-import pers.perry.xu.PickPhotos.utils.Utils;
-import pers.perry.xu.PickPhotos.view.PickPhotosWindowMain;
+import pers.perry.xu.pickphotos.controller.PickPhotosController;
+import pers.perry.xu.pickphotos.exception.InvalidFilePathException;
+import pers.perry.xu.pickphotos.utils.Utils;
 
 public class PickPhotosMain {
-	
+
 	PickPhotosMain(String[] args) {
 		try {
-			//load configuration from yml
-			Utils.getProperties();
-			
+			// initialze
+			toolInitialization();
+
 			//create main window view
-			new PickPhotosWindowMain();
+			PickPhotosController controller = new PickPhotosController();
+			controller.createView();
 			
-		} catch (IOException e) {
+		} catch (IOException | InvalidFilePathException e) {
 			Utils.processException(e);
 		}
 	}
 	
+	private static void toolInitialization() {
+		//load configuration from yml
+		Utils.getProperties();
+
+
+	}
+
 	public static void main(String[] args) {
 		new PickPhotosMain(args);
 	}

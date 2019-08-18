@@ -1,4 +1,4 @@
-package pers.perry.xu.PickPhotos.view;
+package pers.perry.xu.pickphotos.view;
 
 import java.awt.BorderLayout;
 import java.awt.Dimension;
@@ -8,72 +8,64 @@ import java.awt.GridLayout;
 import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
+import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
 
-import pers.perry.xu.PickPhotos.model.PickPhotosModel;
-import pers.perry.xu.PickPhotos.utils.ToolLanguage;
+import org.apache.log4j.Logger;
+
+import pers.perry.xu.pickphotos.controller.PickPhotosController;
+import pers.perry.xu.pickphotos.exception.InvalidFilePathException;
+import pers.perry.xu.pickphotos.utils.ToolConfiguration;
+import pers.perry.xu.pickphotos.utils.ToolLanguage;
+import pers.perry.xu.pickphotos.utils.Utils;
+import pers.perryxu.pickphotos.persistence.dto.Photo;
+import pers.perryxu.pickphotos.persistence.fileio.FileReadHandler;
 
 
 @SuppressWarnings("serial")
 public class PickPhotosWindowMain extends JFrame  {
-	private PickPhotosModel pickPhotosModel;
-	private String targetPhotoPath = "";
-	private String sourcePhotoPath = "";
+	final Logger logger = Logger.getLogger(PickPhotosWindowMain.class);
 	
-
-	String targetFolder = "";
-
-	int photo_width;
-	int photo_height;
-	int currentPhoto = -1; //index of current photo
-	
-	public PickPhotosWindowMain() throws IOException {
+	public PickPhotosWindowMain(PickPhotosController controller) throws IOException, InvalidFilePathException {
 		super(ToolLanguage.getToolMessages("title"));
 		setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-		
-		// Initialization
-		this.pickPhotosModel = new PickPhotosModel();
-		
-		this.sourcePhotoPath = pickPhotosModel.getDefaultSourcePath().toString();
-		this.targetPhotoPath = sourcePhotoPath;
-		
+		logger.setLevel(ToolConfiguration.logLevel);
+
 		// create main window of the tool
-		showMainWindow();
+		showMainWindow(controller);
 	}
-	
-	private void showMainWindow() throws IOException {
+
+	private void showMainWindow(final PickPhotosController controller) throws IOException, InvalidFilePathException {
 		//set size and location for main window
 		Dimension dimension = Toolkit.getDefaultToolkit().getScreenSize();
-		int size_x = 600;
-		int size_y = 800;
-		int loc_x = dimension.width/2-size_x/2;
-		int loc_y = dimension.height/2-size_y/2;
+		final int size_x = 1000;
+		final int size_y = 800;
+		final int loc_x = dimension.width/2-size_x/2;
+		final int loc_y = dimension.height/2-size_y/2;
 		
 		//# The source/target directory input field
 		JLabel sourceFileLabel = new JLabel(ToolLanguage.getToolMessages("input"));
 		sourceFileLabel.setFont(new Font("", Font.BOLD, 18));
 		
-		final JTextField sourceFilePathField = new JTextField("", 28);
-		sourceFilePathField.setText(sourcePhotoPath);
+		final JTextField sourceFilePathField = new JTextField("", 32);
+		sourceFilePathField.setText(controller.getPickPhotosModel().getFilePaths().get("source").toString());
 		sourceFilePathField.setFont(new Font("", Font.PLAIN, 18));
 		sourceFilePathField.setPreferredSize(new Dimension(100, 28));
 		
 		JLabel targetFileLabel = new JLabel(ToolLanguage.getToolMessages("output"));
 		targetFileLabel.setFont(new Font("", Font.BOLD, 18));
 		
-		final JTextField targetFilePathField = new JTextField("", 28);
-		targetFilePathField.setText(targetPhotoPath);
+		final JTextField targetFilePathField = new JTextField("", 32);
+		targetFilePathField.setText(controller.getPickPhotosModel().getFilePaths().get("target").toString());
 		targetFilePathField.setFont(new Font("", Font.PLAIN, 18));
 		targetFilePathField.setPreferredSize(new Dimension(100, 28));
 		
@@ -86,15 +78,21 @@ public class PickPhotosWindowMain extends JFrame  {
 		optionButton.setFont(new Font("", Font.BOLD, 20));
 		
 		//# Read the latest source/target path from the history pickphotos.log
-		File pathFile = new File(pickPhotosModel.getWorkspacePath() + "\\" + "path.txt");
-		BufferedReader br = new BufferedReader(new FileReader(pathFile));
-		String str = br.readLine();
-		while(str != null) {
-		if(str.contains("#R#")) sourceFilePathField.setText(str.replace("#R#", ""));
-		if(str.contains("#S#")) targetFilePathField.setText(str.replace("#S#", ""));
-			str = br.readLine();
+		Path pathFile = controller.getPickPhotosModel().getFilePaths().get("workpath");
+		if (Files.exists(pathFile)) {// load work space path file if existing
+			FileReadHandler fileReadHandler = new FileReadHandler(pathFile);
+			String str = fileReadHandler.readLine();
+			while(str != null) {
+				if (str.contains(ToolConfiguration.sourceFlagInLog)) {
+					sourceFilePathField.setText(str.replace(ToolConfiguration.sourceFlagInLog, "").trim());
+				}
+				if (str.contains(ToolConfiguration.targetFlagInLog)) {
+					targetFilePathField.setText(str.replace(ToolConfiguration.targetFlagInLog, "").trim());
+				}
+				str = fileReadHandler.readLine();
+			}
+			fileReadHandler.endReading();
 		}
-		br.close();
 					
 		//# put components in the java GUI
 		JPanel sourcePanel = new JPanel();
@@ -112,7 +110,7 @@ public class PickPhotosWindowMain extends JFrame  {
 		JPanel startPanel = new JPanel();
 		startPanel.setLayout(new GridLayout(2,1));
 				
-		JButton deleteButton = new JButton("取消选择");
+		final JButton deleteButton = new JButton("取消选择");
 		deleteButton.setPreferredSize(new Dimension(135, 35));
 		deleteButton.setFont(new Font("", Font.BOLD, 20));	
 		deleteButton.setVisible(false);
@@ -139,7 +137,7 @@ public class PickPhotosWindowMain extends JFrame  {
 		inputPanel.add(startPanel, BorderLayout.SOUTH);
 				
 		//Jlabel photo is used to display the current photo
-		JLabel photo = new JLabel("");
+		final JLabel photoPanel = new JLabel("");
 				
 		JButton saveButton = new JButton(ToolLanguage.getToolMessages("save"));
 		saveButton.setPreferredSize(new Dimension(170, 60));
@@ -172,15 +170,30 @@ public class PickPhotosWindowMain extends JFrame  {
 		toolTopPanel.setLayout(new BorderLayout());
 		toolTopPanel.add(inputPanel, BorderLayout.NORTH); //north: input panel
 		toolTopPanel.add(buttonsPanel, BorderLayout.SOUTH); //south: button panel
-		toolTopPanel.add(photo, BorderLayout.CENTER); //center: photo
+		toolTopPanel.add(photoPanel, BorderLayout.CENTER); //center: photo
 				
 		//# Buttons listeners
 		startButton.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent e) {
-				Path targetPath = Paths.get(targetFilePathField.getText().trim());
-				Path sourcePath = Paths.get(sourceFilePathField.getText().trim());
-				pickPhotosModel.startShowPhotos(sourcePath, targetPath);
+				Path newTargetPath = Paths.get(targetFilePathField.getText().trim());
+				Path newSourcePath = Paths.get(sourceFilePathField.getText().trim());
+				
+				ImageIcon picture = null;
+				try {
+					Photo photo = controller.getPickPhotosModel().getPhotoWhenStart(newSourcePath, newTargetPath);
+					if(photo != null) {
+						picture = photo.getDisplayedPhoto(size_x, size_y);
+						photoPanel.setIcon(picture);
+						if (photo.isSaved()) {
+							deleteButton.setVisible(true);
+						} else {
+							deleteButton.setVisible(false);
+						}
+					}
+				} catch (IOException ioException) {
+					Utils.processException(ioException);
+				}
 			}
 		});
 				
@@ -188,35 +201,63 @@ public class PickPhotosWindowMain extends JFrame  {
 			@Override
 			public void actionPerformed(ActionEvent e) {
 				//save the current photo record in index.txt and copy to target directory
-				pickPhotosModel.savePhoto();
+				controller.getPickPhotosModel().savePhoto();
 			}
 		});
 				
 		nextButton.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent e) {
-				pickPhotosModel.showNextPhoto();
+				ImageIcon picture = null;
+				try {
+					Photo photo = controller.getPickPhotosModel().getPhotoWhenNext();
+					if (photo != null) {
+						picture = photo.getDisplayedPhoto(size_x, size_y);
+						photoPanel.setIcon(picture);
+						if (photo.isSaved()) {
+							deleteButton.setVisible(true);
+						} else {
+							deleteButton.setVisible(false);
+						}
+					}
+				} catch (IOException ioException) {
+					Utils.processException(ioException);
+				}
 			}
 		});
 
 		prevButton.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent e) {
-				pickPhotosModel.showPreviousPhoto();
+				ImageIcon picture = null;
+				try {
+					Photo photo = controller.getPickPhotosModel().getPhotoWhenPrevious();
+					if (photo != null) {
+						picture = photo.getDisplayedPhoto(size_x, size_y);
+						photoPanel.setIcon(picture);
+						if (photo.isSaved()) {
+							deleteButton.setVisible(true);
+						} else {
+							deleteButton.setVisible(false);
+						}
+					}
+				} catch (IOException ioException) {
+					Utils.processException(ioException);
+				}
 			}
 		});
 				
 		optionButton.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent e) {
-				openConfigurationWiindow();
+
 			}
 		});
 						
 		deleteButton.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent e) {
-				pickPhotosModel.deleteSavePhotoPhoto();
+				controller.getPickPhotosModel().deleteSavedPhoto();
 			}
 		});
 				
@@ -225,17 +266,5 @@ public class PickPhotosWindowMain extends JFrame  {
 		setSize(size_x, size_y);
 		setLocation(loc_x, loc_y);
 		setVisible(true);
-	}
-
-	// Singleton Pattern
-	private PickPhotosConfiguration configurationWindow;
-
-	public void openConfigurationWiindow() {
-		if (configurationWindow == null) {
-			configurationWindow = new PickPhotosConfiguration(pickPhotosModel);
-			configurationWindow.showOptionsWindow();
-		} else {
-			configurationWindow.showOptionsWindow();
-		}
 	}
 }

@@ -1,4 +1,4 @@
-package pers.perry.xu.PickPhotos.utils;
+package pers.perry.xu.pickphotos.utils;
 
 
 import java.io.FileInputStream;
@@ -8,24 +8,29 @@ import java.util.HashMap;
 
 import javax.swing.JOptionPane;
 
+import org.apache.log4j.Logger;
 import org.yaml.snakeyaml.Yaml;
 
 public class Utils {
 	
-	public static void showErrorWindow(String errorMessage) {
-		JOptionPane.showMessageDialog(null, errorMessage, ToolLanguage.getToolMessages("error"), 1);
+	final static Logger logger = Logger.getLogger(Utils.class);
+
+	{
+		logger.setLevel(ToolConfiguration.logLevel);
 	}
 
-	public static void processException(Exception exception) {
-		
+	public static void showErrorWindow(Throwable exception) {
+		JOptionPane.showMessageDialog(null, exception.getMessage(), ToolLanguage.getToolMessages("error"), 1);
+	}
+
+	public static void processException(Throwable exception) {
 		String runningMode = (String) getProperties().get("runtime_mode");
 		if(runningMode != null && runningMode.equals("gui")) {
-			showErrorWindow(exception.getMessage());
+			showErrorWindow(exception);
 		} else {
-			System.out.println(exception.getMessage());
+			logger.error(exception);
 		}
 	}
-	
 	
 	private static HashMap<String, Object> properties;
 	

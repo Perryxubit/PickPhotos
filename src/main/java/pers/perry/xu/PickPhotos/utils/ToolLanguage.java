@@ -1,14 +1,23 @@
-package pers.perry.xu.PickPhotos.utils;
+package pers.perry.xu.pickphotos.utils;
 
 import java.util.HashMap;
 
+import org.apache.log4j.Logger;
+
 public class ToolLanguage {
-	
-	
-	private static String language = "eng";
+
+	final Logger logger = Logger.getLogger(ToolLanguage.class);
+
+	private static String language = "chn";
+
 	private static HashMap<String, String> chineseMap;
+
 	private static HashMap<String, String> englishMap;
-	
+
+	{
+		logger.setLevel(ToolConfiguration.logLevel);
+	}
+
 	public static String getToolMessages(String messageKey) {
 		String message = null;
 		
@@ -44,7 +53,7 @@ public class ToolLanguage {
 			chineseMap = new HashMap<String, String>();
 			String[] msg = {
 					"程序发生错误!", "照片快速挑选工具", "上一张照片", "下一张照片", "保存照片",
-					"从这里开始挑选照片:", "把挑出来的照片导出到这里:", "点击开始按钮开始挑选照片", "开始", "选项"
+					"照片目录:", "把照片导出到:", "点击开始按钮开始挑选照片", "开始", "选项"
 				};
 			
 			for (int i=0; i<key.length; i++) {
