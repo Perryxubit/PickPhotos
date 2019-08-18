@@ -15,7 +15,7 @@ public class PickPhotosMain {
 
 			//create main window view
 			PickPhotosController controller = new PickPhotosController();
-			controller.createView();
+			controller.createMainView();
 			
 		} catch (IOException | InvalidFilePathException e) {
 			Utils.processException(e);

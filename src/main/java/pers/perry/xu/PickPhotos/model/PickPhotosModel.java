@@ -6,6 +6,7 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -57,9 +58,10 @@ public class PickPhotosModel {
 		String configWorkspace = (String) Utils.getProperties().get("workspace");
 		Path workspace = null;
 		if (configWorkspace != null) {
-			workspace = Paths.get(configWorkspace + File.separator + "PickPhotosRuntime");
+			workspace = Paths.get(configWorkspace + File.separator + ToolConfiguration.workspaceName);
 		} else {
-			workspace = Paths.get(System.getProperty("java.io.tmpdir") + File.separator + "PickPhotosRuntime");
+			workspace = Paths
+					.get(System.getProperty("java.io.tmpdir") + File.separator + ToolConfiguration.workspaceName);
 		}
 
 		// mkdirs() if not existing
@@ -92,6 +94,49 @@ public class PickPhotosModel {
 		Files.createFile(indexFile);
 		Files.createFile(logFile);
 		Files.createFile(pathFile);
+	}
+
+	public boolean clearAllConfigFile() {
+		Path indexFile = pathsHashMap.get("workindex");
+		Path logFile = pathsHashMap.get("worklog");
+		Path pathFile = pathsHashMap.get("workpath");
+
+		Path recycleWorkSpace = Paths
+				.get(pathsHashMap.get("work") + File.separator + ToolConfiguration.workspaceName + ".recycle");
+		
+		Path recycleWorkSpaceIndex = Paths.get(recycleWorkSpace + File.separator + indexFile.getFileName());
+		Path recycleWorkSpaceLog = Paths.get(recycleWorkSpace + File.separator + logFile.getFileName());
+		Path recycleWorkSpacePath = Paths.get(recycleWorkSpace + File.separator + pathFile.getFileName());
+
+		// clear old recycle folder
+		try {
+			// replace files to recycle directory
+			if (!Files.exists(recycleWorkSpace)) {
+				Files.createDirectories(recycleWorkSpace);
+			}
+			if (!Files.exists(recycleWorkSpaceIndex)) {
+				Files.copy(indexFile, recycleWorkSpaceIndex, StandardCopyOption.REPLACE_EXISTING);
+			}
+			if (!Files.exists(recycleWorkSpaceLog)) {
+				Files.copy(logFile, recycleWorkSpaceLog, StandardCopyOption.REPLACE_EXISTING);
+			}
+			if (!Files.exists(recycleWorkSpacePath)) {
+				Files.copy(pathFile, recycleWorkSpacePath, StandardCopyOption.REPLACE_EXISTING);
+			}
+
+			//delete files
+			Files.deleteIfExists(indexFile);
+			Files.deleteIfExists(logFile);
+			Files.deleteIfExists(pathFile);
+
+			logger.info("Copied 3 runtime files to the .recycle directory.");
+			logger.info("Deleted 3 runtime production files.");
+		} catch (IOException e) {
+			Utils.processException(e);
+			return false;
+		}
+
+		return true;
 	}
 
 	private boolean isValidPhoto(Path photoPath) {
@@ -192,7 +237,7 @@ public class PickPhotosModel {
 			photo = new Photo(photoPath);
 
 			// update the text information area
-			if (fileChecked.get(photoPath.getFileName().toString()) != null) { // the photo was saved before
+			if (fileChecked.get(photoPath.toString()) != null) { // the photo was saved before
 				photo.setSaved(true);
 			} else {
 				photo.setSaved(false); // not saved yet
@@ -239,8 +284,7 @@ public class PickPhotosModel {
 			fileWriteHandler.appendFileWithTimeStamp("Read photoList #" + currentPhotoIndex);
 			fileWriteHandler.endWriting();
 
-			if (fileChecked.get(photoList.get(currentPhotoIndex).getFileName().toString()) != null) { // the photo was
-																										// saved before
+			if (fileChecked.get(photoList.get(currentPhotoIndex).toString()) != null) { // the photo was saved before
 				photo.setSaved(true);
 			} else {
 				photo.setSaved(false);
@@ -277,8 +321,7 @@ public class PickPhotosModel {
 			fileWriteHandler.appendFileWithTimeStamp("Read photoList #" + currentPhotoIndex);
 			fileWriteHandler.endWriting();
 
-			if (fileChecked.get(photoList.get(currentPhotoIndex).getFileName().toString()) != null) { // the photo was
-																										// saved before
+			if (fileChecked.get(photoList.get(currentPhotoIndex).toString()) != null) { // the photo was saved before
 				photo.setSaved(true);
 			} else {
 				photo.setSaved(false);
@@ -297,141 +340,68 @@ public class PickPhotosModel {
 		}
 	}
 
-	public void deleteSavedPhoto() {
-//		try {
-//			// 1. delete from hashmap
-//			String deleteName = photoList[currentPhoto].getName();
-//			System.out.println("Delete  saved photo (index = " + currentPhoto + ")");
-//			copymap.remove(deleteName);
-//
-//			// 2. re-write the index.txt saved list
-//			File indexFile = new File(this.workspacePath + "\\" + "index.txt");
-//			ArrayList<String> templist = new ArrayList<String>();
-//			BufferedReader br = new BufferedReader(new FileReader(indexFile));
-//			String str = br.readLine();
-//			while (str != null) {
-//				if (!str.equals(deleteName))
-//					templist.add(str);
-//				str = br.readLine();
-//			}
-//			br.close();
-//
-//			indexFile.delete();
-//			indexFile.createNewFile();
-//			BufferedWriter bw = new BufferedWriter(new FileWriter(indexFile, true));
-//			for (int i = 0; i < templist.size(); i++) {
-//				bw.write(templist.get(i));
-//				bw.newLine();
-//			}
-//			bw.close();
-//			System.out.println("Updated index.txt (removed the photo)");
-//
-//			// 3. delete the file in save folder
-//			File deleteFile = new File(targetPhotoPath + "\\" + photoList[currentPhoto].getName());
-//			if (deleteFile.exists()) {
-//				deleteFile.delete();
-//				System.out.println(deleteFile.getPath() + " deleted.");
-//			} else
-//				System.out.println("No file exist? need t ocheck inconsistency!");
-//
-//			// 4. changed info text field
-//			notice_label.setText(" 未保存 ");
-//			deleteButton.hide();
-//
-//			JOptionPane.showMessageDialog(null, "已取消选择该照片 ", "提示", JOptionPane.INFORMATION_MESSAGE);
-//		} catch (Exception e) {
-//			e.printStackTrace();
-//		}
+	public boolean savePhoto(Path targetPath) throws IOException {
+		if (currentPhotoIndex < 0 || currentPhotoIndex >= photoList.size()) {
+			return false;
+		}
+
+		if (fileChecked.get(photoList.get(currentPhotoIndex).toString()) != null) {
+			JOptionPane.showMessageDialog(null,
+					"这张照片(" + photoList.get(currentPhotoIndex).getFileName() + ")已经保存过了, 不需要再次保存", "注意!", 1);
+			return false;
+		} else { // save the photo
+			String targetFilePath = targetPath + File.separator + photoList.get(currentPhotoIndex).getFileName();
+			Files.copy(photoList.get(currentPhotoIndex), Paths.get(targetFilePath),
+					StandardCopyOption.REPLACE_EXISTING);
+			logger.debug("Saved file to: " + targetFilePath + " from: " + photoList.get(currentPhotoIndex));
+
+			// Mark the current photo to "Saved" status
+			fileChecked.put(photoList.get(currentPhotoIndex).toString(), true);
+
+			// append entry in index.txt file to mark the savings
+			Path indexFile = pathsHashMap.get("workindex");
+
+			FileWriteHandler fileWriteHandler = new FileWriteHandler(indexFile, true);
+			fileWriteHandler.appendFile(photoList.get(currentPhotoIndex).toString());
+			fileWriteHandler.endWriting();
+			logger.info("update file index.txt successfully.");
+
+			return true;
+		}
 	}
 
+	public void deleteSavedPhoto(Path targetPath) throws IOException {
+		// delete path from hashmap
+		logger.info("Deleting saved photo (index = " + currentPhotoIndex + ")");
+		String deletePath = photoList.get(currentPhotoIndex).toString();
+		fileChecked.remove(deletePath);
 
+		// re-write the index.txt saved list
+		Path indexFile = pathsHashMap.get("workindex");
 
-	public int clearAllConfigFile() {
-//		File[] configF = new File[3];
-//		configF[0] = new File(this.workspacePath + "\\" + "index.txt");
-//		configF[1] = new File(this.workspacePath + "\\" + "log.txt");
-//		configF[2] = new File(this.workspacePath + "\\" + "path.txt");
-//		File backup = new File(this.workspacePath + "\\" + "Recycle");
-//
-//		// clear old recycle folder
-//		new File(this.workspacePath + "\\Recycle\\index.txt").delete();
-//		new File(this.workspacePath + "\\Recycle\\log.txt").delete();
-//		new File(this.workspacePath + "\\Recycle\\path.txt").delete();
-//		if (backup.isDirectory())
-//			backup.delete();
-//		backup.mkdirs();
-//
-//		try {
-//			// copy three files
-//			for (int i = 0; i < 3; i++) {
-//				FileInputStream input = new FileInputStream(configF[i]);
-//				String oldFileName = configF[i].getName().substring(configF[i].getName().lastIndexOf("\\") + 1) + "";
-//				FileOutputStream output = new FileOutputStream(new File(backup.getPath() + "\\" + oldFileName));
-//				byte[] b = new byte[1024 * 5];
-//				int len;
-//				while ((len = input.read(b)) != -1) {
-//					output.write(b, 0, len);
-//				}
-//				output.flush();
-//				output.close();
-//				input.close();
-//			}
-//			// delete all file:
-//			for (int i = 0; i < 3; i++)
-//				configF[i].delete();
-//
-//		} catch (Exception e) {
-//			e.printStackTrace();
-//			return 1; // failed
-//		}
+		FileReadHandler fileReadHandler = new FileReadHandler(indexFile);
+		ArrayList<String> tempList = fileReadHandler.readAll();
+		fileReadHandler.endReading();
 
-		// initialize successfully
-		return 0;
+		Files.delete(indexFile);
+		Files.createFile(indexFile);
+
+		FileWriteHandler fileWriteHandler = new FileWriteHandler(indexFile, true);
+		for (int i=0; i< tempList.size(); i++) {
+			if (!tempList.get(i).equals(deletePath))
+				fileWriteHandler.appendFile(tempList.get(i));
+		}
+		fileWriteHandler.endWriting();
+		logger.info("Updated index.txt (removed the photo from index.txt)");
+
+		// delete the file in save folder
+		Path targetFile = Paths.get(targetPath + File.separator + photoList.get(currentPhotoIndex).getFileName().toString());
+
+		if (Files.exists(targetFile)) {
+			Files.delete(targetFile);
+			JOptionPane.showMessageDialog(null, "已取消选择该照片 ", "提示", JOptionPane.INFORMATION_MESSAGE);
+			logger.info("The saved photo was deleted.");
+		}
 	}
-
-
-	public void savePhoto() {
-//		if (currentPhoto >= 0) {
-//			if (copymap.get(photoList[currentPhoto].getName()) != null)
-//				JOptionPane.showMessageDialog(null, "这张照片(" + photoList[currentPhoto].getName() + ")已经保存过了, 不需要再次保存",
-//						"注意!", 1);
-//			else { // save the photo
-//				copymap.put(photoList[currentPhoto].getName(), true);
-//				// first add to index.txt
-//				File indexFile = new File(this.workspacePath + "\\" + "index.txt");
-//				try {
-//					// first add entry in index.txt file
-//					BufferedWriter bw = new BufferedWriter(new FileWriter(indexFile, true));
-//					bw.write(photoList[currentPhoto].getName());
-//					bw.newLine();
-//					bw.close();
-//
-//					// then copy the file
-//					InputStream inStream = new FileInputStream(photoList[currentPhoto].getPath());
-//					FileOutputStream fs = new FileOutputStream(
-//							targetPhotoPath + "\\" + photoList[currentPhoto].getName());
-//					byte[] buffer = new byte[1444];
-//					int length, bytesum = 0, byteread = 0;
-//					while ((byteread = inStream.read(buffer)) != -1) {
-//						bytesum += byteread;
-////		                   System.out.println(bytesum); 
-//						fs.write(buffer, 0, byteread);
-//					}
-//					fs.close();
-//					inStream.close();
-//
-//					// inform the users that save is successfully.
-//					System.out.println("update file index.txt successfully.");
-//					notice_label.setText("该照片已经保存过了!!!!!");
-//					deleteButton.show();
-//					JOptionPane.showMessageDialog(null, "保存成功!", "提示", 1);
-//				} catch (Exception e2) {
-//					e2.printStackTrace();
-//					JOptionPane.showMessageDialog(null, e2.getMessage(), "注意!", 1);
-//				}
-//			}
-//		}
-	}
-
 
 }

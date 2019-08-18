@@ -5,6 +5,7 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 
 import pers.perry.xu.pickphotos.utils.Utils;
 
@@ -36,5 +37,20 @@ public class FileReadHandler {
 		} catch (IOException e) {
 			Utils.processException(e);
 		}
+	}
+	
+	public ArrayList<String> readAll() {
+		ArrayList<String> contents = new ArrayList<String>();
+
+		try {
+			String str = this.bufferedReader.readLine();
+			while (str != null) {
+				contents.add(str);
+				str = this.bufferedReader.readLine();
+			}
+		} catch (IOException e) {
+			Utils.processException(e);
+		}
+		return contents;
 	}
 }

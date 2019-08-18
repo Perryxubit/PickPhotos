@@ -53,7 +53,7 @@ public class ToolLanguage {
 			chineseMap = new HashMap<String, String>();
 			String[] msg = {
 					"程序发生错误!", "照片快速挑选工具", "上一张照片", "下一张照片", "保存照片",
-					"照片目录:", "把照片导出到:", "点击开始按钮开始挑选照片", "开始", "选项"
+					"照片目录:", "把照片导出到:", "点击开始按钮开始挑选照片", "开始", "高级"
 				};
 			
 			for (int i=0; i<key.length; i++) {
@@ -63,7 +63,7 @@ public class ToolLanguage {
 			englishMap = new HashMap<String, String>();
 			String[] msg = {
 					"Error happened!", "Pick your photos in simplest way :)", "Previous one", "Next one", "Save this photo",
-					"Pick the photos from:", "Export the picked photos to:", "Click START button to pick photos", "Start", "Options"
+					"Pick the photos from:", "Export the picked photos to:", "Click START button to pick photos", "Start", "Advance"
 				};
 			
 			for (int i=0; i<key.length; i++) {

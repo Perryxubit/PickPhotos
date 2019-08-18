@@ -7,6 +7,7 @@ import org.apache.log4j.Logger;
 import pers.perry.xu.pickphotos.exception.InvalidFilePathException;
 import pers.perry.xu.pickphotos.model.PickPhotosModel;
 import pers.perry.xu.pickphotos.utils.ToolConfiguration;
+import pers.perry.xu.pickphotos.view.PickPhotosWindowConfiguration;
 import pers.perry.xu.pickphotos.view.PickPhotosWindowMain;
 
 public class PickPhotosController {
@@ -30,9 +31,15 @@ public class PickPhotosController {
 		return pickPhotosModel;
 	}
 
-	public void createView() throws IOException, InvalidFilePathException {
+	public void createMainView() throws IOException, InvalidFilePathException {
 		// create main Swing window
 		logger.info("Create Initial View of main window.");
 		new PickPhotosWindowMain(this);
+	}
+
+	public void createConfigView() throws InvalidFilePathException {
+		// create configuration Swing window
+		logger.info("Create View of configuration window.");
+		new PickPhotosWindowConfiguration(this);
 	}
 }

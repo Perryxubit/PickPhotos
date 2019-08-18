@@ -17,6 +17,7 @@ import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
 
@@ -47,10 +48,10 @@ public class PickPhotosWindowMain extends JFrame  {
 	private void showMainWindow(final PickPhotosController controller) throws IOException, InvalidFilePathException {
 		//set size and location for main window
 		Dimension dimension = Toolkit.getDefaultToolkit().getScreenSize();
-		final int size_x = 1000;
-		final int size_y = 800;
-		final int loc_x = dimension.width/2-size_x/2;
-		final int loc_y = dimension.height/2-size_y/2;
+		final int sizeX = 1000;
+		final int sizeY = 800;
+		final int locationX = dimension.width / 2 - sizeX / 2;
+		final int locationY = dimension.height / 2 - sizeY / 2;
 		
 		//# The source/target directory input field
 		JLabel sourceFileLabel = new JLabel(ToolLanguage.getToolMessages("input"));
@@ -117,7 +118,7 @@ public class PickPhotosWindowMain extends JFrame  {
 		
 		
 		//msgLabel is used to show the status of current photo:
-		JLabel msgLabel = new JLabel(ToolLanguage.getToolMessages("msgstartpicking")); 		
+		final JLabel msgLabel = new JLabel(ToolLanguage.getToolMessages("msgstartpicking"));
 		msgLabel.setFont(new Font("", Font.BOLD, 24));
 		
 		JLabel photoInfoLabel = new JLabel("");
@@ -178,17 +179,20 @@ public class PickPhotosWindowMain extends JFrame  {
 			public void actionPerformed(ActionEvent e) {
 				Path newTargetPath = Paths.get(targetFilePathField.getText().trim());
 				Path newSourcePath = Paths.get(sourceFilePathField.getText().trim());
-				
+				msgLabel.setText("");
+
 				ImageIcon picture = null;
 				try {
 					Photo photo = controller.getPickPhotosModel().getPhotoWhenStart(newSourcePath, newTargetPath);
 					if(photo != null) {
-						picture = photo.getDisplayedPhoto(size_x, size_y);
+						picture = photo.getDisplayedPhoto(sizeX, sizeY);
 						photoPanel.setIcon(picture);
 						if (photo.isSaved()) {
 							deleteButton.setVisible(true);
+							msgLabel.setText("该图片已经选择");
 						} else {
 							deleteButton.setVisible(false);
+							msgLabel.setText("该图片还没选择");
 						}
 					}
 				} catch (IOException ioException) {
@@ -201,7 +205,14 @@ public class PickPhotosWindowMain extends JFrame  {
 			@Override
 			public void actionPerformed(ActionEvent e) {
 				//save the current photo record in index.txt and copy to target directory
-				controller.getPickPhotosModel().savePhoto();
+				Path newTargetPath = Paths.get(targetFilePathField.getText().trim());
+				try {
+					if (controller.getPickPhotosModel().savePhoto(newTargetPath)) {
+						JOptionPane.showMessageDialog(null, "保存成功!", "提示", 1);
+					}
+				} catch (IOException ioException) {
+					Utils.processException(ioException);
+				}
 			}
 		});
 				
@@ -212,12 +223,14 @@ public class PickPhotosWindowMain extends JFrame  {
 				try {
 					Photo photo = controller.getPickPhotosModel().getPhotoWhenNext();
 					if (photo != null) {
-						picture = photo.getDisplayedPhoto(size_x, size_y);
+						picture = photo.getDisplayedPhoto(sizeX, sizeY);
 						photoPanel.setIcon(picture);
 						if (photo.isSaved()) {
 							deleteButton.setVisible(true);
+							msgLabel.setText("该图片已经选择");
 						} else {
 							deleteButton.setVisible(false);
+							msgLabel.setText("该图片还没选择");
 						}
 					}
 				} catch (IOException ioException) {
@@ -233,12 +246,14 @@ public class PickPhotosWindowMain extends JFrame  {
 				try {
 					Photo photo = controller.getPickPhotosModel().getPhotoWhenPrevious();
 					if (photo != null) {
-						picture = photo.getDisplayedPhoto(size_x, size_y);
+						picture = photo.getDisplayedPhoto(sizeX, sizeY);
 						photoPanel.setIcon(picture);
 						if (photo.isSaved()) {
 							deleteButton.setVisible(true);
+							msgLabel.setText("该图片已经选择");
 						} else {
 							deleteButton.setVisible(false);
+							msgLabel.setText("该图片还没选择");
 						}
 					}
 				} catch (IOException ioException) {
@@ -250,21 +265,32 @@ public class PickPhotosWindowMain extends JFrame  {
 		optionButton.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent e) {
-
+				try {
+					controller.createConfigView();
+				} catch (InvalidFilePathException invalidPathException) {
+					Utils.processException(invalidPathException);
+				}
 			}
 		});
 						
 		deleteButton.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent e) {
-				controller.getPickPhotosModel().deleteSavedPhoto();
+				try {
+					Path newTargetPath = Paths.get(targetFilePathField.getText().trim());
+					controller.getPickPhotosModel().deleteSavedPhoto(newTargetPath);
+					msgLabel.setText("该图片还没选择");
+					deleteButton.setVisible(false);
+				} catch (IOException ioException) {
+					Utils.processException(ioException);
+				}
 			}
 		});
 				
 		//# create Main window
 		add(toolTopPanel);
-		setSize(size_x, size_y);
-		setLocation(loc_x, loc_y);
+		setSize(sizeX, sizeY);
+		setLocation(locationX, locationY);
 		setVisible(true);
 	}
 }
